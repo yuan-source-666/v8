@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from model.model import build_model, load_model_config
 from _amp import model_amp_probe
+from _drives import DrivesController
 
 EOT = "<|endoftext|>"
 SEP = "\n答："
@@ -50,7 +51,7 @@ def build_dataset(enc, max_len):
     for ex in EXAMPLES:
         inst_ids = enc.encode(ex["instruction"])
         sep_ids = enc.encode(SEP)
-        out_ids = enc.encode(ex["output"]) + enc.encode(EOT)
+        out_ids = enc.encode(ex["output"]) + enc.encode(EOT, allowed_special={EOT})
         full = inst_ids + sep_ids + out_ids
         if len(full) > max_len:                # 截断
             full = full[:max_len]
@@ -81,6 +82,7 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--max-len", type=int, default=128)
     ap.add_argument("--dtype", default="bf16", choices=["bf16", "float32"])
+    ap.add_argument("--use-drives", action="store_true", help="启用驱动信号层（恐惧刹车/内在奖励）")
     args = ap.parse_args()
 
     cfg = load_model_config(args.config, args.profile)
@@ -108,21 +110,32 @@ def main():
     print(f"[v8/sft] 示例指令数={len(samples)}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    # —— 驱动信号层（可选）——
+    ctrl = DrivesController(cfg) if args.use_drives else None
+    if ctrl is not None:
+        print("[v8/sft] drives 已启用（L2 稳态驱动：恐惧刹车 + 内在奖励）")
     out_dir = args.out or os.path.join(cfg.get("out_dir", "out"), cfg["name"])
     os.makedirs(out_dir, exist_ok=True)
     save_path = os.path.join(out_dir, "sft.pt")
 
     t0 = time.time()
     for step in range(args.max_iters):
+        if ctrl is not None:
+            opt.param_groups[0]["lr"] = args.lr * ctrl.brake()   # 恐惧刹车
         x, y = get_batch(samples, args.max_len, device)
         opt.zero_grad(set_to_none=True)
         with autocast_ctx():
             _, loss = model(x, y)
         loss.backward()
         opt.step()
+        if ctrl is not None:
+            info = ctrl.update(loss.item(), ctrl.grad_norm(model))
         if (step + 1) % 20 == 0:
-            print(f"[v8/sft] step {step + 1}/{args.max_iters} loss {loss.item():.4f} "
-                  f"({(time.time() - t0) / 60:.1f} min)")
+            msg = (f"[v8/sft] step {step + 1}/{args.max_iters} loss {loss.item():.4f} "
+                   f"({(time.time() - t0) / 60:.1f} min)")
+            if ctrl is not None:
+                msg += ctrl.log_suffix(info)
+            print(msg)
     torch.save({"model": model.state_dict(), "config": cfg, "profile": args.profile}, save_path)
     print(f"[v8/sft] 完成，已保存 → {save_path}")
 

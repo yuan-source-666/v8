@@ -10,12 +10,20 @@
 from __future__ import annotations
 
 import math
+import os
+import sys
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .hybrid import RMSNorm, HybridBackbone
+if __package__ in (None, ""):
+    # 支持 `python model/model.py` 直接运行：把项目根加入 sys.path 后走绝对导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from model.hybrid import RMSNorm, HybridBackbone
+else:
+    # 以包方式运行（python -m model.model / 外部 from model.model import ...）走相对导入
+    from .hybrid import RMSNorm, HybridBackbone
 
 __all__ = ["MambaMixGPT", "build_model", "load_model_config"]
 

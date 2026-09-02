@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from model.model import build_model, load_model_config
 from _amp import model_amp_probe
+from _drives import DrivesController
 
 EOT = "<|endoftext|>"
 SEP = "\n答："
@@ -55,7 +56,7 @@ def make_tensor(enc, prompt, response, max_len):
     """
     p = enc.encode(prompt)
     s = enc.encode(SEP)
-    r = enc.encode(response) + enc.encode(EOT)
+    r = enc.encode(response) + enc.encode(EOT, allowed_special={EOT})
     full = p + s + r
     full = full[:max_len]
     inp = torch.tensor(full, dtype=torch.long)
@@ -90,6 +91,7 @@ def main():
     ap.add_argument("--beta", type=float, default=0.1)
     ap.add_argument("--max-len", type=int, default=128)
     ap.add_argument("--dtype", default="bf16", choices=["bf16", "float32"])
+    ap.add_argument("--use-drives", action="store_true", help="启用驱动信号层（恐惧刹车/内在奖励）")
     args = ap.parse_args()
 
     cfg = load_model_config(args.config, args.profile)
@@ -127,12 +129,18 @@ def main():
     print(f"[v8/dpo] 偏好对数量={len(data)}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    # —— 驱动信号层（可选）——
+    ctrl = DrivesController(cfg) if args.use_drives else None
+    if ctrl is not None:
+        print("[v8/dpo] drives 已启用（L2 稳态驱动：恐惧刹车 + 内在奖励）")
     out_dir = args.out or os.path.join(cfg.get("out_dir", "out"), cfg["name"])
     os.makedirs(out_dir, exist_ok=True)
     save_path = os.path.join(out_dir, "dpo.pt")
 
     t0 = time.time()
     for step in range(args.max_iters):
+        if ctrl is not None:
+            opt.param_groups[0]["lr"] = args.lr * ctrl.brake()   # 恐惧刹车
         opt.zero_grad(set_to_none=True)
         total = 0.0
         for iw, il, mw, ml in data:
@@ -148,9 +156,14 @@ def main():
             loss_pair.backward()
             total += loss_pair.item()
         opt.step()
+        if ctrl is not None:
+            info = ctrl.update(total / len(data), ctrl.grad_norm(model))
         if (step + 1) % 10 == 0:
-            print(f"[v8/dpo] step {step + 1}/{args.max_iters} loss {total / len(data):.4f} "
-                  f"({(time.time() - t0) / 60:.1f} min)")
+            msg = (f"[v8/dpo] step {step + 1}/{args.max_iters} loss {total / len(data):.4f} "
+                   f"({(time.time() - t0) / 60:.1f} min)")
+            if ctrl is not None:
+                msg += ctrl.log_suffix(info)
+            print(msg)
     torch.save({"model": model.state_dict(), "config": cfg, "profile": args.profile}, save_path)
     print(f"[v8/dpo] 完成，已保存 → {save_path}")
 

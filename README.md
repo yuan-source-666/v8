@@ -15,7 +15,7 @@ v8/
 ├── README.md                     # 本文件
 ├── requirements.txt              # Python 依赖
 ├── config/
-│   └── mini.yaml                 # Mini ~10M 与 Tiny ~33M 两档配置
+│   └── mini.yaml                 # Mini ~20M 与 Tiny ~54M 两档配置
 ├── docs/
 │   └── LLM自进化架构设计.md        # 架构蓝皮书拷贝（v1.2）
 ├── data/
@@ -73,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run_mini.ps1
 Linux / macOS：
 
 ```bash
-cd E:/agi研发项目/v8   # 或本仓库实际路径
+cd /path/to/v8
 bash scripts/run_mini.sh
 ```
 
@@ -106,15 +106,9 @@ python train/dpo.py --config config/mini.yaml --profile mini --init out/mini/sft
 在项目根目录执行（Mini 档，前向 + 反向各一步不报错）：
 
 ```bash
-python -c "from model.model import build_model; import torch
-m = build_model('config/mini.yaml', 'mini')
-opt = torch.optim.AdamW(m.parameters(), lr=1e-3)
-x = torch.randint(0, 4096, (2, 128))
-y = m(x)
-loss = y.mean()
-loss.backward()
-print('SMOKE_OK', y.shape, 'params(M)=', sum(p.numel() for p in m.parameters())/1e6)"
+python -c "from model.model import build_model; import torch; m = build_model('config/mini.yaml', 'mini'); opt = torch.optim.AdamW(m.parameters(), lr=1e-3); x = torch.randint(0, m.vocab_size, (2, 128)); logits, _ = m(x); loss = logits.mean(); loss.backward(); print('SMOKE_OK', tuple(logits.shape), 'params(M)=', round(sum(p.numel() for p in m.parameters())/1e6, 3))"
 ```
+说明：`m(x)` 返回 `(logits, loss)` 元组，需解包取 `logits` 后再做 `.mean()`；随机输入上限用 `m.vocab_size`（运行时以 tokenizer 真实词表为准，gpt2 为 50257）。
 
 ## 5. 训练流程与自进化闭环
 
@@ -132,9 +126,10 @@ print('SMOKE_OK', y.shape, 'params(M)=', sum(p.numel() for p in m.parameters())/
 
 | 档位 | 参数量(约) | d_model | 层数 | 布局 | 定位 |
 |------|-----------|---------|------|------|------|
-| `mini` | ~8–10M | 256 | 6 | [M,M,A]×2 | 纯机制验证，日级产出，冒烟验证用 |
-| `tiny` | ~33M | 512 | 6 | [M,M,A]×2 | 本机主战场，真实闭环 |
+| `mini` | ~20M | 256 | 6 | [M,M,A]×2 | 纯机制验证，日级产出，冒烟验证用 |
+| `tiny` | ~54M | 512 | 6 | [M,M,A]×2 | 本机主战场，真实闭环 |
 
+> 注：上表参数量为 **gpt2 词表（50257）** 下的实测值；tied embedding（`50257×d_model`）占了大头（mini ≈12.9M、tiny ≈25.7M）。若需贴近原始 ~10M/~33M 设计，可改用小词表 tokenizer 或显式固定 `vocab_size`。
 详细超参见 `config/mini.yaml`。
 
 ## 7. 常见问题
@@ -143,5 +138,7 @@ print('SMOKE_OK', y.shape, 'params(M)=', sum(p.numel() for p in m.parameters())/
 - **IPEX 装不上？** 不影响运行，脚本自动跳过 IPEX，仅提示。
 - **续训**：`python train/train.py --config ... --resume out/mini/best.pt`。
 - **训练速度慢？** 确保 `torch.set_num_threads(16)` 生效；在 BIOS/电源选项中开启高性能。
+- **model.py 直接跑报 ImportError？** 用模块方式：`python -m model.model --config config/mini.yaml --profile mini`（相对导入要求以包运行）。
+- **核数不足 16？** `torch.set_num_threads(16)` 只影响吞吐、不影响正确性；实际核数少于 16 时把数值改成真实核数即可。
 
 （内容由 AI 生成，仅供参考）

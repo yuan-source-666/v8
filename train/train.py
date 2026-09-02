@@ -90,6 +90,10 @@ def make_drives(cfg):
 # ---------------- 评估（验证集损失） ----------------
 @torch.no_grad()
 def evaluate(model, loader, num_batches, autocast_ctx):
+    # 语料过短（切不出完整序列）时跳过 eval，避免 demo/极小语料下结尾崩溃
+    if loader.len < loader.block_size + 2:
+        print(f"[v8/train] ⚠️ 验证语料过短（{loader.len} tokens < block_size+2={loader.block_size + 2}），跳过本次 eval")
+        return float("inf")
     model.eval()
     losses = []
     for _ in range(num_batches):
@@ -175,6 +179,7 @@ def main():
         from drives.rewards import drives_loss, intrinsic_reward, compute_state_deltas
         print("[v8/train] drives 已启用（L2 稳态驱动）")
     drive_metrics = {"loss_ema": None, "loss_delta": 0.0, "loss_var": 0.0, "grad_norm": 0.0}
+    _loss_window = deque(maxlen=20)      # 累积滑动窗口（loss_var 用真实抖动）
 
     # —— 续训 / 断点 ——
     step = 0
@@ -234,8 +239,8 @@ def main():
             ema = drive_metrics["loss_ema"]
             drive_metrics["loss_ema"] = drop if ema is None else 0.9 * ema + 0.1 * drop
             drive_metrics["loss_delta"] = drop - drive_metrics["loss_ema"]
-            dq = deque([drop] * 20, maxlen=20)
-            drive_metrics["loss_var"] = max(0.0, float(np.var(list(dq))))
+            _loss_window.append(drop)
+            drive_metrics["loss_var"] = max(0.0, float(np.var(list(_loss_window))))
             # grad_norm（backward 后）
             gn = 0.0
             try:
@@ -280,11 +285,14 @@ def main():
         # — 验证 + checkpoint —
         if (step + 1) % eval_interval == 0 or (step + 1) == max_iters:
             val_loss = evaluate(model, val_loader, eval_iters, autocast_ctx)
-            print(f"[v8/train] ===== val_loss {val_loss:.4f} ppl {math.exp(min(val_loss, 20)):.2f} =====")
-            if val_loss < best_val:
-                best_val = val_loss
-                save_ckpt(model_path_best, only_model=True)
-                print(f"[v8/train] 新最佳模型已保存 → {model_path_best}")
+            if math.isinf(val_loss):
+                print(f"[v8/train] ===== val_loss 跳过（验证语料过短，无法切出序列）=====")
+            else:
+                print(f"[v8/train] ===== val_loss {val_loss:.4f} ppl {math.exp(min(val_loss, 20)):.2f} =====")
+                if val_loss < best_val:
+                    best_val = val_loss
+                    save_ckpt(model_path_best, only_model=True)
+                    print(f"[v8/train] 新最佳模型已保存 → {model_path_best}")
         if (step + 1) % save_interval == 0:
             save_ckpt(ckpt_path_last)
             print(f"[v8/train] 检查点已保存 → {ckpt_path_last}")
