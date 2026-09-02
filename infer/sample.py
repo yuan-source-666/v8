@@ -50,11 +50,11 @@ def generate(model, enc, prompt, max_new_tokens, temperature, top_k, top_p, auto
             for _ in range(max_new_tokens):
                 logits, _ = model(x)
                 nxt = top_sample(logits[0, -1], temperature, top_k, top_p)
-                x = torch.cat([x, nxt], dim=1)
+                x = torch.cat([x, nxt.unsqueeze(0)], dim=1)
     out_ids = x[0, len(ids):].tolist()
     text = enc.decode(out_ids)
     # 去掉残留的 EOT
-    eot = enc.encode("<|endoftext|>")[0]
+    eot = enc.encode("<|endoftext|>", allowed_special={"<|endoftext|>"})[0]
     text = text.split("<|endoftext|>")[0].strip()
     return text
 
