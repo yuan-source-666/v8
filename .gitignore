@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 本地中间产物 / 输出
+temp/
+out/
+out_err.txt
+
+# 模型权重 / 数据缓存（可随时由 prepare.py 重新生成）
+*.pt
+*.pth
+*.bin
+*.npy
+data/tokens/
+
+# IDE / 系统
+.vscode/
+.idea/
+Thumbs.db

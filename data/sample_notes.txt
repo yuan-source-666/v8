@@ -1,0 +1,28 @@
+语料放置说明
+=================================
+
+训练前请把【原始纯文本语料】放入本目录下的 corpus/ 子目录：
+
+    data/corpus/*.txt        （UTF-8 编码，每篇一个 .txt 或多个均可）
+
+然后运行一次数据准备，它会一次性把全部原文分词并落盘为 token 缓存：
+
+    python data/prepare.py --config config/mini.yaml
+
+之后的训练循环直接加载缓存的 .bin / .npy（mmap），不会再做实时分词。
+
+注意事项
+--------
+1. 编码：文本必须是 UTF-8；若含 BOM，脚本会自动剥离。
+2. 语料范围：请确认语料 License 允许使用/再分发（见架构文档 §5）。
+3. 规模参考（CPU-only）：
+   - Mini 档：建议起步语料 0.5M~5M token（几十个 KB ~ 几 MB 文本）；
+   - Tiny 档：建议 20M~100M token（几十 MB 文本），按机器可承受节奏推进。
+4. 内容形态：中文/英文/代码均可；中文建议混入通用语料防止过窄。
+5. 如何生成演示语料（无真实语料时验证链路）：
+       python data/prepare.py --config config/mini.yaml --demo
+   该命令会使用内置一段示例文本自动生成 token 缓存，仅用于跑通流程，
+   请不要把 --demo 生成的结果当作真实训练语料。
+6. 数据管线输出位置：
+       data/tokens/<profile>_train.bin / <profile>_val.bin
+   分别是 uint16 的 token id 序列文件（numpy .npy）。

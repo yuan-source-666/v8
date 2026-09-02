@@ -1,0 +1,92 @@
+# ============================================================
+# v8 模型配置 —— Mini ~10M 与 Tiny ~33M 两档
+# 依据《LLM自进化架构设计.md》v1.2
+#   · Hybrid Mamba-Transformer：Mamba-2 与 Attention 按 2:1 交替
+#   · GQA + RoPE + SwiGLU + RMSNorm
+#   · CPU-only：bf16 + 16 线程 + IPEX/oneDNN
+# ============================================================
+
+# ---------- 通用默认（两档共享，可被各档覆盖） ----------
+common: &common
+  seed: 42
+  tokenizer: "gpt2"            # tiktoken GPT-2 BPE
+  dtype: "bf16"                # CPU bf16 混合精度（其余：float32）
+  num_threads: 16              # torch.set_num_threads
+  max_seq_len: 512             # 训练序列长度（RoPE 缓存按此构建）
+  grad_accum: 8                # 梯度累积步数
+  grad_clip: 1.0
+  warmup_frac: 0.02            # warmup 占总步数比例
+  min_lr_frac: 0.1             # cosine 下限 = min_lr_frac * lr
+  log_interval: 20
+  eval_interval: 500
+  eval_iters: 60
+  save_interval: 2000
+  out_dir: "out"
+  # ---------- 驱动信号层 L2（稳态机制） ----------
+  # 启用：训练时 --use-drives（或 use_drives: true）
+  use_drives: false
+  drives:
+    components:                 # 内部状态 S(t) 各分量：setpoint=稳态设定值, low/high=安全边界
+      resources:     {setpoint: 0.75, low: 0.0, high: 1.0}
+      energy:        {setpoint: 0.80, low: 0.0, high: 1.0}
+      consistency:   {setpoint: 0.70, low: 0.0, high: 1.0}
+      safety_margin: {setpoint: 0.60, low: 0.0, high: 1.0}
+      desire:        {setpoint: 0.50, low: 0.0, high: 1.0}
+      fear:          {setpoint: 0.30, low: 0.0, high: 1.0}
+    target_state:               # 欲望的“目标状态”（趋近梯度信号指向它）
+      resources: 0.90
+      energy: 0.60
+      consistency: 0.85
+      safety_margin: 0.80
+    safety_bound: {fear_threshold: 0.80, anticipation_steps: 3}
+    w_reg: 0.01                 # 稳态偏差正则系数（接进 train.py 的总损失）
+    w_desire: 0.5               # 欲望项权重
+    w_fear: 1.0                 # 恐惧项权重
+
+# ---------- Mini ~10M：纯机制验证（冒烟验证档） ----------
+mini:
+  <<: *common
+  name: mini
+  vocab_size: 4096             # 语义占位；运行时以 tokenizer 实际词表为准（gpt2=50257，见 model.resolve_vocab_size）
+  d_model: 256
+  n_layer: 6
+  n_head: 8
+  n_kv_head: 2                  # GQA：8 query 头 / 2 KV 头
+  head_dim: 32
+  ffn_mult: 4                   # SwiGLU 隐层倍率（inter = ffn_mult * d_model）
+  layout: "MMA"                 # 每 3 层一组 [Mamba, Mamba, Attention]，重复 n_layer/3 次
+  mamba:
+    expand: 2                   # d_inner = expand * d_model
+    d_state: 16
+    d_conv: 4
+    headdim: 64                 # Mamba-2 内部分头维度 → nheads = d_inner // headdim
+    dt: true                    # 是否使用可学习时间步缩放（log-space）
+  batch_size: 16
+  max_iters: 5000
+  lr: 0.001                     # 峰值学习率（小模型经验值）
+  train_data: "data/tokens/mini_train.npy"
+  val_data: "data/tokens/mini_val.npy"
+
+# ---------- Tiny ~33M：本机主战场（真实闭环） ----------
+tiny:
+  <<: *common
+  name: tiny
+  vocab_size: 8192             # 语义占位；运行时以 tokenizer 实际词表为准（gpt2=50257）
+  d_model: 512
+  n_layer: 6
+  n_head: 16
+  n_kv_head: 4                  # GQA：16 query 头 / 4 KV 头
+  head_dim: 32
+  ffn_mult: 4
+  layout: "MMA"
+  mamba:
+    expand: 2
+    d_state: 16
+    d_conv: 4
+    headdim: 64
+    dt: true
+  batch_size: 16
+  max_iters: 30000
+  lr: 0.00075
+  train_data: "data/tokens/tiny_train.bin"
+  val_data: "data/tokens/tiny_val.bin"

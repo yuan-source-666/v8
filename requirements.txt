@@ -1,0 +1,17 @@
+# v8 依赖清单
+# 建议 Python 3.10 - 3.11；CPU-only 机器请安装 CPU 版 torch，见 README
+
+# ---- 深度学习框架（CPU-only）----
+# 安装 CPU 版： pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+
+# ---- Intel CPU 加速（可选，安装失败时训练脚本自动跳过并退回 oneDNN）----
+# CPU 版安装参考： pip install intel-extension-for-pytorch --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
+intel-extension-for-pytorch>=2.2 ; platform_system == "Windows"
+
+# ---- Tokenizer ----
+tiktoken>=0.6
+
+# ---- 数据 / 配置 ----
+numpy>=1.24
+pyyaml>=6.0
