@@ -38,10 +38,13 @@ common: &common
       energy: 0.60
       consistency: 0.85
       safety_margin: 0.80
-    safety_bound: {fear_threshold: 0.80, anticipation_steps: 3}
-    w_reg: 0.01                 # 稳态偏差正则系数（接进 train.py 的总损失）
+    safety_bound: {fear_threshold: 0.80, anticipation_steps: 3, fear_margin: 0.10}
+    w_reg: 0.01                 # 稳态偏差正则系数（L2 观察式）
     w_desire: 0.5               # 欲望项权重
-    w_fear: 1.0                 # 恐惧项权重
+    w_fear: 1.0                 # 恐惧项权重（调制刹车与 L1 正则强度）
+    w_stab: 0.05                # L1 可微稳态正则基础权重（logits RMS → 稳态基线，真实梯度）
+    act_ema_beta: 0.9           # logits RMS 稳态基线的 EMA 系数
+    energy_recovery: 0.004      # 学习顺利（resources>0.5）时的能量回收速率（闭环）
 
 # ---------- Mini ~10M：纯机制验证（冒烟验证档） ----------
 mini:
@@ -88,5 +91,5 @@ tiny:
   batch_size: 16
   max_iters: 30000
   lr: 0.00075
-  train_data: "data/tokens/tiny_train.bin"
-  val_data: "data/tokens/tiny_val.bin"
+  train_data: "data/tokens/tiny_train.npy"
+  val_data: "data/tokens/tiny_val.npy"

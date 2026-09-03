@@ -5,9 +5,12 @@
   · 欲望（desire）：趋近“目标状态”的梯度信号。目标状态 target 由配置给定，
     desire 正比于当前状态到目标状态的归一化距离 —— 距离越大，“想要”越强；
     同时给出带符号的方向 (target − current)，供 rewards 决定往哪个方向推状态。
-  · 恐惧（fear）：越出安全边界的前瞻惩罚信号。把当前状态按既有趋势外推
-    anticipation_steps 步（predict_next），若预测值将越过 [low, high] 安全边界，
-    则产生惩罚；越得越多、越接近阈值，恐惧越大。
+  · 恐惧（fear）：越出安全边界的前瞻惩罚信号。把当前状态按【近期实际速度】
+    （state.velocity()，ΔS 的 EMA）外推 anticipation_steps 步（predict_next），
+    若预测值越过 [low, high] 边界、或进入边界内侧 fear_margin 预警带，
+    则产生惩罚；越得越多、越接近边界，恐惧越大。
+    （注意：趋势必须是真实速度——“朝 setpoint 走一步”的伪趋势在 setpoint
+    位于边界内时永远推不出边界，恐惧将恒为 0。）
 
 恐惧与欲望形成“趋利避害”的合力：欲望把系统推向目标，恐惧把系统拦在边界内。
 """
@@ -28,6 +31,7 @@ class DriveSignals:
         sb = safety_bound or drives_cfg.get("safety_bound", {})
         self.fear_threshold = float(sb.get("fear_threshold", 0.8))
         self.anticipation_steps = int(sb.get("anticipation_steps", 3))
+        self.fear_margin = float(sb.get("fear_margin", 0.10))  # 边界预警带宽度（区间占比）
         # 目标状态（欲望的指向）；缺省默认取各分量 setpoint
         self.target_state: Dict[str, float] = dict(
             target_state or drives_cfg.get("target_state", {}))
@@ -78,22 +82,25 @@ class DriveSignals:
 
     # ------------------------------------------------------------------
     def fear(self) -> float:
-        """恐惧：把当前趋势外推 anticipation_steps 步，若越界则累积惩罚（>=0）。"""
-        # 当前趋势：朝 setpoint 走一步的归一化方向（简单近似的“惯性”）
-        trend = {}
-        for n, spec in self.state.specs.items():
-            v = self.state.get(n)
-            toward = spec.setpoint - v
-            trend[n] = (0.0 if abs(toward) < 1e-6 else
-                        (spec.step if toward > 0 else -spec.step))
-        pred = self.state.predict_next(trend, self.anticipation_steps)
+        """恐惧：按近期实际速度外推 anticipation_steps 步，进入边界预警带/越界则惩罚（>=0）。"""
+        vel = self.state.velocity()
         penalty = 0.0
         for n, spec in self.state.specs.items():
-            pv = pred[n]
+            if n == "fear":
+                continue                      # 恐惧分量不做自我递归
+            rg = max(spec.high - spec.low, 1e-6)
+            pv = self.state.get(n) + vel.get(n, 0.0) * self.anticipation_steps
+            margin = self.fear_margin * rg    # 预警带：距边界 margin 以内即预警
+            # 越界惩罚（保持原语义）
             if pv > spec.high:
-                penalty += (pv - spec.high) / max(spec.high - spec.low, 1e-6)
+                penalty += (pv - spec.high) / rg
+            # 预警带惩罚：趋势逼近上边界
+            elif pv > spec.high - margin:
+                penalty += (pv - (spec.high - margin)) / rg
             if pv < spec.low:
-                penalty += (spec.low - pv) / max(spec.high - spec.low, 1e-6)
+                penalty += (spec.low - pv) / rg
+            elif pv < spec.low + margin:
+                penalty += ((spec.low + margin) - pv) / rg
         return min(1.0, penalty)
 
     def safety_critical(self) -> bool:
@@ -120,6 +127,12 @@ if __name__ == "__main__":
     })
     state = InternalState(specs)
     sig = DriveSignals(state, {}, safety_bound={"anticipation_steps": 5})
-    sig.target_state = {"energy": 0.2, "resources": 0.9}
-    sig.target_state = {"energy": 0.2}      # 目标低于 setpoint，制造“危险趋势”
-    print("signals OK:", sig.compute(), "fear=", round(sig.fear(), 4))
+    sig.target_state = {"energy": 0.2}
+    print("初始信号:", sig.compute())
+    # 模拟能量持续下滑逼近下边界 → 恐惧应从 0 升起
+    for _ in range(45):
+        state.step({"energy": -0.02})
+    c = sig.compute()
+    assert c["fear"] > 0.0, "恐惧信号应随能量逼近边界而激活"
+    print("能量下滑后:", c, "state=", {k: round(v, 3) for k, v in state.snapshot().items()})
+    print("signals OK: fear 随真实趋势激活 ✓")

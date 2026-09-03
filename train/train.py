@@ -20,16 +20,15 @@ import math
 import os
 import sys
 import time
-from collections import deque
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from model.model import build_model, load_model_config, MambaMixGPT
 from _amp import model_amp_probe
+from _drives import DrivesController
 
 # ---------------- 环境加速（线程 / oneDNN / IPEX）----------------
 def setup_runtime(cfg, verbose=True):
@@ -75,16 +74,8 @@ class DataLoader:
 
 
 # ---------------- 驱动信号层集成 ----------------
-def make_drives(cfg):
-    from drives.state import InternalState, parse_specs
-    from drives.signal import DriveSignals
-    drv = cfg.get("drives") or {}
-    specs = parse_specs(drv.get("components", {}))
-    state = InternalState(specs)
-    sig = DriveSignals(state, drv,
-                       safety_bound=drv.get("safety_bound"),
-                       target_state=drv.get("target_state"))
-    return state, sig
+# 统一走 _drives.DrivesController（与 sft.py / dpo.py 共用同一实现），
+# 旧行内版 make_drives 已移除 —— 见 _drives.py 模块文档。
 
 
 # ---------------- 评估（验证集损失） ----------------
@@ -173,13 +164,9 @@ def main():
     grad_clip = float(cfg.get("grad_clip", 1.0))
 
     # —— 驱动信号层 ——
-    state, sig_drives = (None, None)
-    if use_drives:
-        state, sig_drives = make_drives(cfg)
-        from drives.rewards import drives_loss, intrinsic_reward, compute_state_deltas
-        print("[v8/train] drives 已启用（L2 稳态驱动）")
-    drive_metrics = {"loss_ema": None, "loss_delta": 0.0, "loss_var": 0.0, "grad_norm": 0.0}
-    _loss_window = deque(maxlen=20)      # 累积滑动窗口（loss_var 用真实抖动）
+    ctrl = DrivesController(cfg) if use_drives else None
+    if ctrl is not None:
+        print("[v8/train] drives 已启用（L1 可微稳态正则 + L2 恐惧刹车/内在奖励）")
 
     # —— 续训 / 断点 ——
     step = 0
@@ -214,55 +201,42 @@ def main():
           f"batch={batch_size} grad_accum={grad_accum} 每更新有效tokens={tokens_per_update}")
 
     for step in range(step, max_iters):
-        # — 学习率（含 drives 恐惧刹车）——
+        # — 学习率（含 drives 恐惧刹车：用上一步 fear，趋势逼近边界即降 LR）——
         lr_now = MambaMixGPT.lr_at(step, max_iters, lr, min_lr, warmup_iters)
-        fear = float(sig_drives.fear()) if sig_drives is not None else 0.0
-        brake = 1.0 - 0.2 * fear if use_drives else 1.0
+        brake = ctrl.brake() if ctrl is not None else 1.0
         for g in optimizer.param_groups:
             g["lr"] = lr_now * brake
 
-        # — 梯度累积微批 —
+        # — 梯度累积微批（含 L1 可微稳态正则）—
         model.train()
         micro_losses = []
+        rms_vals = []
         for _ in range(grad_accum):
             x, y = train_loader.get_batch()
             with autocast_ctx():
-                _, loss = model(x, y)
-            loss_scaled = loss / grad_accum
-            loss_scaled.backward()
-            micro_losses.append(loss.float().item())
+                logits, loss = model(x, y)
+            ce = loss.float().item()
+            if ctrl is not None:
+                stab, rms = ctrl.stability_loss(logits)   # 可微，梯度经 RMS 回流
+                if rms is not None:
+                    rms_vals.append(rms)
+                loss = loss + stab
+            (loss / grad_accum).backward()
+            micro_losses.append(ce)
 
-        # — drives 内部状态推进 + 驱动损失（观察式，随训练动态变化）—
-        extra = 0.0
-        if use_drives and state is not None and sig_drives is not None:
-            drop = (sum(micro_losses) / len(micro_losses))
-            ema = drive_metrics["loss_ema"]
-            drive_metrics["loss_ema"] = drop if ema is None else 0.9 * ema + 0.1 * drop
-            drive_metrics["loss_delta"] = drop - drive_metrics["loss_ema"]
-            _loss_window.append(drop)
-            drive_metrics["loss_var"] = max(0.0, float(np.var(list(_loss_window))))
-            # grad_norm（backward 后）
-            gn = 0.0
-            try:
-                ps = [p.grad.detach().float().norm() for p in model.parameters() if p.grad is not None]
-                gn = float(sum(p * p for p in ps) ** 0.5) if ps else 0.0
-            except Exception:
-                gn = 0.0
-            drive_metrics["grad_norm"] = gn
-            deltas = compute_state_deltas(state, sig_drives, drive_metrics)
-            state.step(deltas)
-            extra = float(drives_loss(sig_drives, cfg).item())
-            internal_reward = intrinsic_reward(sig_drives, cfg)
+        # — 累积日志 + drives 状态推进（L2 观察式：指标 → S(t) → 恐惧/奖励）—
+        mb_loss = sum(micro_losses) / len(micro_losses)
+        running_loss = running_loss * 0.9 + mb_loss * 0.1
+        info = None
+        if ctrl is not None:
+            rms_mean = sum(rms_vals) / len(rms_vals) if rms_vals else None
+            info = ctrl.update(mb_loss, ctrl.grad_norm(model), act_rms=rms_mean)
 
         # — 参数更新 —
         if grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
-
-        # — 累积日志 —
-        mb_loss = sum(micro_losses) / len(micro_losses)
-        running_loss = running_loss * 0.9 + mb_loss * 0.1
 
         # — 日志 —
         if (step + 1) % log_interval == 0:
@@ -271,14 +245,8 @@ def main():
             ppl = math.exp(min(mb_loss, 20))
             msg = (f"step {step + 1}/{max_iters} loss {mb_loss:.4f} (EMA {running_loss:.4f}) "
                    f"ppl {ppl:.2f} lr {lr_now * brake:.2e} {tsp / 1000:.1f}k tok/s")
-            if use_drives and state is not None:
-                s = state.snapshot()
-                msg += (f" | D {sig_drives.total_deviation():.3f} "
-                        f"desire {sig_drives.desire_total():.3f} fear {fear:.3f} "
-                        f"drv_loss {extra:.4f} r {internal_reward:+.3f} "
-                        f"E {s['energy']:.2f} R {s['resources']:.2f} "
-                        f"C {s['consistency']:.2f} M {s['safety_margin']:.2f} "
-                        f"[{'临界' if sig_drives.safety_critical() else '稳态'}]")
+            if ctrl is not None and info is not None:
+                msg += ctrl.log_suffix(info)
             print(f"[v8/train] {msg}")
             t_window = time.time()
 

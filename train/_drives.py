@@ -5,17 +5,27 @@
 loss 值再求方差，方差恒为 0；本模块改为累积滑动窗口，loss_var 反映真实抖动，
 使 consistency 状态分量的演化更有意义）。
 
+两级接入（让 drives 真正“活”在训练里）：
+  · L1 张量级（可微）：stability_loss(logits) 把 logits 的 RMS 拉向历史稳态
+    基线（EMA），权重由驱动信号动态调制（恐惧/偏差越大约束越强），
+    梯度经 RMS 流回网络 —— 驱动层由此真实参与优化目标。
+  · L2 状态级（观察式）：update() 推进 S(t)，fear 通过 brake() 调低有效
+    学习率（趋势逼近安全边界时“踩刹车”）。
+
 用法（SFT/DPO 同构，train.py 逻辑等价）：
     ctrl = DrivesController(cfg)          # 仅当启用 drives 时创建
     ...
     for step in range(max_iters):
         lr = base_lr * ctrl.brake()        # 恐惧刹车（step 开始，用上一步 fear）
-        ... 前向/反向/step ...
-        info = ctrl.update(loss_val, ctrl.grad_norm(model))   # step 后推进状态
+        logits, loss = model(x, y)
+        stab, rms = ctrl.stability_loss(logits)   # 可微稳态正则
+        (loss + stab).backward()
+        ... opt.step() ...
+        info = ctrl.update(loss_val, ctrl.grad_norm(model), act_rms=rms)
 """
 from __future__ import annotations
 from collections import deque
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -35,16 +45,21 @@ def make_drives(cfg: Dict):
 
 
 class DrivesController:
-    """封装 drives 的逐训练步集成：指标更新 → 状态推进 → 刹车 / 损失 / 奖励。"""
+    """封装 drives 的逐训练步集成：指标更新 → 状态推进 → 刹车 / 稳态正则 / 奖励。"""
 
     def __init__(self, cfg: Dict, energy_cost: float = 0.005):
         self.cfg = cfg
+        drv = cfg.get("drives") or {}
         self.energy_cost = energy_cost
+        self.energy_recovery = float(drv.get("energy_recovery", 0.004))
+        self.w_stab = float(drv.get("w_stab", 0.05))       # L1 稳态正则基础权重
+        self.act_ema_beta = float(drv.get("act_ema_beta", 0.9))
         self.state, self.sig = make_drives(cfg)
         self.metrics: Dict[str, float] = {
             "loss_ema": None, "loss_delta": 0.0, "loss_var": 0.0, "grad_norm": 0.0,
         }
         self._loss_window = deque(maxlen=20)   # 累积滑动窗口（修复 loss_var 恒 0）
+        self._act_ema: Optional[float] = None  # logits RMS 稳态基线（EMA）
         self.fear = 0.0                        # 上一步的恐惧（用于 brake）
 
     # ------------------------------------------------------------------
@@ -58,12 +73,35 @@ class DrivesController:
               for p in model.parameters() if p.grad is not None]
         return float(sum(p * p for p in ps) ** 0.5) if ps else 0.0
 
-    def update(self, loss_val: float, grad_norm: Optional[float] = None) -> Dict:
+    def stability_weight(self) -> float:
+        """驱动信号调制的稳态正则权重：恐惧/偏差越大，稳态约束越强。"""
+        return self.w_stab * (1.0 + float(self.sig.fear())
+                              + float(self.sig.total_deviation()))
+
+    def stability_loss(self, logits: torch.Tensor) -> Tuple[torch.Tensor, Optional[float]]:
+        """L1 张量级稳态正则（可微）：logits RMS 拉向历史稳态基线。
+
+        首次调用只记录基线（EMA 初始化），返回 0 损失；此后每步以
+        _act_ema 为 setpoint，产生真实的梯度通路。
+        Returns:
+            (loss, rms)：可微 0 维张量 + detached RMS 标量（供 update 跟踪）。
+        """
+        from drives.rewards import stability_loss
+        if self._act_ema is None:
+            rms = float(logits.detach().float().pow(2).mean().sqrt())
+            self._act_ema = rms
+            zero = torch.zeros((), dtype=logits.dtype, device=logits.device)
+            return zero, rms
+        return stability_loss(logits, self._act_ema, self.stability_weight())
+
+    def update(self, loss_val: float, grad_norm: Optional[float] = None,
+               act_rms: Optional[float] = None) -> Dict:
         """在一个训练更新周期结束后调用：更新指标 → 推进状态 → 返回驱动信息。
 
         Args:
             loss_val: 本周期平均 loss（float）。
             grad_norm: 本周期梯度范数；不传则沿用上一值。
+            act_rms: 本周期 logits RMS（detached）；用于更新稳态基线与 act_drift。
         Returns:
             dict：fear / brake / drv_loss / reward / deviation / desire / critical / state
         """
@@ -77,10 +115,17 @@ class DrivesController:
             float(np.var(list(self._loss_window))) if len(self._loss_window) >= 2 else 0.0)
         if grad_norm is not None:
             self.metrics["grad_norm"] = float(grad_norm)
+        if act_rms is not None:
+            if self._act_ema is None:
+                self._act_ema = float(act_rms)
+            self.metrics["act_drift"] = abs(float(act_rms) - self._act_ema)
+            self._act_ema = (self.act_ema_beta * self._act_ema
+                             + (1.0 - self.act_ema_beta) * float(act_rms))
         state_metrics = dict(self.metrics)
         state_metrics["loss"] = drop
         deltas = compute_state_deltas(self.state, self.sig, state_metrics,
-                                      energy_cost=self.energy_cost)
+                                      energy_cost=self.energy_cost,
+                                      energy_recovery=self.energy_recovery)
         self.state.step(deltas)
         extra = float(drives_loss(self.sig, self.cfg).item())
         internal_reward = intrinsic_reward(self.sig, self.cfg)
@@ -99,8 +144,10 @@ class DrivesController:
     def log_suffix(self, info: Dict) -> str:
         """把驱动信息格式化为日志尾缀（train.py 日志风格）。"""
         s = info["state"]
+        drift = self.metrics.get("act_drift", 0.0)
         return (f" | D {info['deviation']:.3f} desire {info['desire']:.3f} "
-                f"fear {info['fear']:.3f} drv_loss {info['drv_loss']:.4f} "
+                f"fear {info['fear']:.3f} brake {info['brake']:.3f} "
+                f"drift {drift:.3f} drv_loss {info['drv_loss']:.4f} "
                 f"r {info['reward']:+.3f} E {s.get('energy', float('nan')):.2f} "
                 f"R {s.get('resources', float('nan')):.2f} "
                 f"C {s.get('consistency', float('nan')):.2f} "

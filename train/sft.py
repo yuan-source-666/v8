@@ -113,7 +113,7 @@ def main():
     # —— 驱动信号层（可选）——
     ctrl = DrivesController(cfg) if args.use_drives else None
     if ctrl is not None:
-        print("[v8/sft] drives 已启用（L2 稳态驱动：恐惧刹车 + 内在奖励）")
+        print("[v8/sft] drives 已启用（L1 可微稳态正则 + L2 恐惧刹车/内在奖励）")
     out_dir = args.out or os.path.join(cfg.get("out_dir", "out"), cfg["name"])
     os.makedirs(out_dir, exist_ok=True)
     save_path = os.path.join(out_dir, "sft.pt")
@@ -125,11 +125,16 @@ def main():
         x, y = get_batch(samples, args.max_len, device)
         opt.zero_grad(set_to_none=True)
         with autocast_ctx():
-            _, loss = model(x, y)
+            logits, loss = model(x, y)
+        ce = loss.detach().float().item()
+        rms = None
+        if ctrl is not None:
+            stab, rms = ctrl.stability_loss(logits)   # L1 可微稳态正则（梯度经 RMS 回流）
+            loss = loss + stab
         loss.backward()
         opt.step()
         if ctrl is not None:
-            info = ctrl.update(loss.item(), ctrl.grad_norm(model))
+            info = ctrl.update(ce, ctrl.grad_norm(model), act_rms=rms)
         if (step + 1) % 20 == 0:
             msg = (f"[v8/sft] step {step + 1}/{args.max_iters} loss {loss.item():.4f} "
                    f"({(time.time() - t0) / 60:.1f} min)")

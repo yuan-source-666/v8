@@ -1,34 +1,48 @@
-"""把稳态偏差 D 接入为 intrinsic reward / loss 附加正则项（供 train.py 调用）。
+"""把驱动信号接入训练：可微稳态正则（L1 张量级）+ 内在奖励 / 驱动损失（L2 状态级）。
 
-对齐架构文档 v1.2：驱动信号层不是摆设，而是真实接入训练循环。
-本模块提供两个可被训练直接调用的接口：
+对齐架构文档 v1.2：驱动信号层不是摆设，而是真实接入训练循环。分两级：
 
-  · intrinsic_reward(signals) -> float
-        RL 风格的内在奖励：
-          reward = −w_reg·D       （偏离稳态 → 负向奖励，鼓励回到稳态）
-                 + w_desire·desire（欲望 = 距目标距离，越近越“满足”，奖励越高）
-                 − w_fear·fear    （越出安全边界的前瞻恐惧 → 强力惩罚）
-        desire 项用 (1 − D_target) 语义，这里 reward 越大越“好”。
+  · L1 张量级（可微，真实梯度通路）—— stability_loss(logits, setpoint, weight)
+        把网络输出 logits 的 RMS 拉向稳态设定值 setpoint（由 S(t) 状态层的
+        EMA 基线给出，即“网络激活尺度不要漂移”的稳态约束）：
+            L_stab = weight · (rms(logits) − setpoint)²
+        梯度经 rms 流回网络权重；weight 由驱动信号动态调制
+        （恐惧/偏差越大，稳态约束越强，见 DrivesController.stability_loss）。
 
-  · drives_loss(signals, cfg) -> torch.Tensor（标量张量）
-        loss 附加正则项：加到 train.py 的总损失上：
-          L_drive = w_reg · mean(D²) + w_fear·fear − w_desire·(1−desire)
-        L_drive 随训练动态变化（因为 S(t) 由训练动态更新），从而把“稳态/趋利避害”
-        作为软约束刻进优化目标。
+  · L2 状态级（观察式，作用于学习率与日志）——
+        intrinsic_reward(signals) / drives_loss(signals, cfg)：
+          reward = −w_reg·D + w_desire·(1−desire) − w_fear·fear
+        S(t) 本身是实数值标量（非可微张量），其导出信号不直接进梯度，
+        而是通过“恐惧刹车”（调低有效学习率）与稳态正则权重调制影响优化。
 
-内部状态 S(t) 本身是实数值（非可微张量），因此驱动信号通过“观察式”方式
-影响训练：S(t) 的演化由训练动态决定，这里把其导出信号作为标量正则加入损失，
-等价于对优化目标做动态加权。
+内部状态 S(t) 的演化由训练动态决定（compute_state_deltas），
+能量、资源、一致性、安全边距互相耦合，形成趋利避害的闭环。
 """
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Tuple
 
 import torch
 
 from .signal import DriveSignals
 
-__all__ = ["intrinsic_reward", "drives_loss", "compute_state_deltas"]
+__all__ = ["stability_loss", "intrinsic_reward", "drives_loss", "compute_state_deltas"]
+
+
+def stability_loss(logits: torch.Tensor, setpoint: float,
+                   weight: float) -> Tuple[torch.Tensor, float]:
+    """L1 张量级稳态正则（可微）：把 logits 的 RMS 拉向稳态设定值。
+
+    Args:
+        logits:   (B, T, V) 模型输出（含梯度路径）
+        setpoint: 稳态设定值（标量，来自状态层的 RMS EMA 基线，不参与梯度）
+        weight:   正则权重（标量，由驱动信号动态调制）
+    Returns:
+        (loss, rms)：loss 为 0 维可微张量；rms 为 detached 标量（供状态层跟踪基线）。
+    """
+    rms = logits.float().pow(2).mean(dim=-1).sqrt().mean()   # 可微标量
+    loss = weight * (rms - float(setpoint)) ** 2
+    return loss, float(rms.detach())
 
 
 def _weights(cfg: Dict) -> Dict[str, float]:
@@ -65,13 +79,15 @@ def drives_loss(signals: DriveSignals, cfg: Dict, device="cpu") -> torch.Tensor:
 
 
 def compute_state_deltas(state, signals: DriveSignals, metrics: Dict,
-                         energy_cost: float = 0.005) -> Dict[str, float]:
+                         energy_cost: float = 0.005,
+                         energy_recovery: float = 0.004) -> Dict[str, float]:
     """根据训练动态把指标映射为内部状态的更新量（ΔS）。
 
     这是状态演化 S(t+1) = S(t) + Δ 的 Δ 来源：
-      · energy：每步固定消耗（CPU 训练即“烧能量”）
-      · resources：损失下降 → 学到知识 → 资源上升（增量与 loss 负相关）
-      · consistency：近期损失抖动越小 → 一致性越高
+      · energy：每步固定消耗（CPU 训练即“烧能量”）；学习顺利（resources 高）
+        时部分回收 —— 否则能量单调衰减触底，恐惧将永久饱和，闭环失效
+      · resources：损失下降 → 学到知识 → 资源上升（增量与 loss 残差负相关）
+      · consistency：近期损失抖动越小、激活尺度漂移越小 → 一致性越高
       · safety_margin：梯度范数越大越危险 → 边距收缩
       · desire / fear：被 learning 信号推到与 computed desire/fear 一致
     """
@@ -80,18 +96,25 @@ def compute_state_deltas(state, signals: DriveSignals, metrics: Dict,
     def spec_for(name):
         return state.specs.get(name)
 
-    # energy: 恒耗
+    # energy: 恒耗 + 学习顺利时部分回收（闭环：resources 高 → energy 止跌回升）
     if spec_for("energy"):
-        deltas["energy"] = -energy_cost
+        recovery = 0.0
+        if "resources" in state.values:
+            recovery = energy_recovery * max(0.0, state.get("resources") - 0.5)
+        deltas["energy"] = -energy_cost + recovery
 
     # resources: 由 loss 下降驱动
     if spec_for("resources") and "loss" in metrics:
         dl = metrics.get("loss_delta", 0.0)          # 本步损失变化（负=下降）
         deltas["resources"] = -0.6 * dl + 0.001      # loss 降 → resources 升
 
-    # consistency: 由损失方差（抖动）反向驱动
+    # consistency: 由损失方差（抖动）与激活尺度漂移（act_drift）反向驱动
     if spec_for("consistency") and "loss_var" in metrics:
-        deltas["consistency"] = -metrics["loss_var"] * 0.5 + 0.002
+        d = -metrics["loss_var"] * 0.5 + 0.002
+        drift = metrics.get("act_drift", 0.0)
+        if drift > 0:
+            d -= min(0.02, drift * 0.05)   # 激活尺度漂移越大 → 一致性越低
+        deltas["consistency"] = d
 
     # safety_margin: 梯度范数越大越危险
     if spec_for("safety_margin") and "grad_norm" in metrics:
@@ -121,9 +144,21 @@ if __name__ == "__main__":
     state = InternalState(specs)
     sig = DriveSignals(state, {})
     cfg = {"drives": {"w_reg": 0.01, "w_desire": 0.5, "w_fear": 1.0}}
-    state.step(compute_state_deltas(state, sig,
-                                    {"loss": 4.0, "loss_delta": -0.3, "loss_var": 0.02,
-                                     "grad_norm": 0.8}))
+    # 1) 可微稳态正则：梯度应能经 rms 流回
+    logits = torch.randn(2, 8, 16, requires_grad=True)
+    setpoint = float(logits.detach().float().pow(2).mean().sqrt())
+    stab, rms = stability_loss(logits, setpoint, weight=0.05)
+    stab.backward()
+    assert logits.grad is not None and float(logits.grad.abs().sum()) > 0, "稳态正则无梯度!"
+    print("stability_loss OK: loss=", round(stab.detach().item(), 6), "rms=", round(rms, 4),
+          "grad 流通 ✓")
+    # 2) 状态演化闭环：能量下滑但学习顺利（resources 高）时应止跌
+    for i in range(30):
+        state.step(compute_state_deltas(state, sig,
+                                        {"loss": 4.0, "loss_delta": -0.3, "loss_var": 0.02,
+                                         "grad_norm": 0.8, "act_drift": 0.1}))
+    s = state.snapshot()
     print("rewards OK: reward=", round(intrinsic_reward(sig, cfg), 4),
           "loss=", round(float(drives_loss(sig, cfg)), 4),
-          "state=", {k: round(v, 3) for k, v in state.snapshot().items()})
+          "fear=", round(sig.fear(), 4),
+          "state=", {k: round(v, 3) for k, v in s.items()})

@@ -57,6 +57,8 @@ class InternalState:
                 v = init_values[name]
             self.values[name] = spec.clamp(v)
         self._step_counter = 0
+        self.vel_beta = 0.6                                    # 速度 EMA 系数
+        self._vel: Dict[str, float] = {n: 0.0 for n in specs}  # 近期实际速度（趋势）
 
     # ------------------------------------------------------------------
     def get(self, name: str) -> float:
@@ -65,6 +67,10 @@ class InternalState:
     def snapshot(self) -> Dict[str, float]:
         """返回当前状态的拷贝（便于记录日志）。"""
         return dict(self.values)
+
+    def velocity(self) -> Dict[str, float]:
+        """近期实际速度（ΔS 的 EMA），供恐惧的前瞻外推使用。"""
+        return dict(self._vel)
 
     # ------------------------------------------------------------------
     def step(self, deltas: Dict[str, float]) -> Dict[str, float]:
@@ -79,16 +85,22 @@ class InternalState:
             spec = self.specs[name]
             clamped_d = max(-spec.step, min(spec.step, float(d)))
             self.values[name] = spec.clamp(self.values[name] + clamped_d)
+            self._vel[name] = (self.vel_beta * self._vel.get(name, 0.0)
+                               + (1.0 - self.vel_beta) * clamped_d)
         self._step_counter += 1
         return self.values
 
     # ------------------------------------------------------------------
-    def predict_next(self, deltas: Dict[str, float], steps: int = 1) -> Dict[str, float]:
+    def predict_next(self, deltas: Optional[Dict[str, float]] = None,
+                     steps: int = 1) -> Dict[str, float]:
         """前瞻：预测把 deltas 连续外推 steps 步后的状态（用于恐惧的前向惩罚）。
 
+        deltas 缺省用近期实际速度 _vel（EMA），即“按当前趋势惯性外推”；
         返回与 values 同构的“预测下一状态”（不受限速/边界约束，保留越界量，
         这正是恐惧信号要惩罚的“危险趋势”）。
         """
+        if deltas is None:
+            deltas = self._vel
         pred = {}
         for name, v in self.values.items():
             d = deltas.get(name, 0.0)
@@ -106,4 +118,9 @@ if __name__ == "__main__":
     assert s.get("energy") == 0.75
     s.step({"fear": 10.0})
     assert s.get("fear") == 0.35
-    print("InternalState OK:", s.snapshot(), "predict_next=", s.predict_next({"energy": -0.05}, 3))
+    # 持续下降 → 速度 EMA 应为负，惯性外推可见“危险趋势”
+    for _ in range(5):
+        s.step({"energy": -0.05})
+    print("InternalState OK:", s.snapshot(),
+          "vel=", {k: round(v, 4) for k, v in s.velocity().items()},
+          "predict_next=", s.predict_next(steps=3))

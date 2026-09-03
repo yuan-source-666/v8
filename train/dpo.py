@@ -132,7 +132,7 @@ def main():
     # —— 驱动信号层（可选）——
     ctrl = DrivesController(cfg) if args.use_drives else None
     if ctrl is not None:
-        print("[v8/dpo] drives 已启用（L2 稳态驱动：恐惧刹车 + 内在奖励）")
+        print("[v8/dpo] drives 已启用（L1 可微稳态正则 + L2 恐惧刹车/内在奖励）")
     out_dir = args.out or os.path.join(cfg.get("out_dir", "out"), cfg["name"])
     os.makedirs(out_dir, exist_ok=True)
     save_path = os.path.join(out_dir, "dpo.pt")
@@ -143,21 +143,26 @@ def main():
             opt.param_groups[0]["lr"] = args.lr * ctrl.brake()   # 恐惧刹车
         opt.zero_grad(set_to_none=True)
         total = 0.0
+        rms_vals = []
         for iw, il, mw, ml in data:
             # 参考模型 logprob（冻结）
             rw = seq_logprobs(ref, iw, mw, autocast_ctx)
             rl = seq_logprobs(ref, il, ml, autocast_ctx)
-            # 策略模型 logprob（需可微 → 走 model 前向）
+            # 策略模型 logprob（需可微 → 走 model 前向；ctrl 不为 None 时附带稳态正则）
             with autocast_ctx():
-                lw = _train_logprob(model, iw, mw)
-                ll_ = _train_logprob(model, il, ml)
+                lw, rms_w = _train_logprob(model, iw, mw, ctrl)
+                ll_, rms_l = _train_logprob(model, il, ml, ctrl)
+            for r in (rms_w, rms_l):
+                if r is not None:
+                    rms_vals.append(r)
             ratio = args.beta * ((lw.unsqueeze(0) - rw) - (ll_.unsqueeze(0) - rl))
             loss_pair = -F.logsigmoid(ratio).mean()
             loss_pair.backward()
             total += loss_pair.item()
         opt.step()
         if ctrl is not None:
-            info = ctrl.update(total / len(data), ctrl.grad_norm(model))
+            rms_mean = sum(rms_vals) / len(rms_vals) if rms_vals else None
+            info = ctrl.update(total / len(data), ctrl.grad_norm(model), act_rms=rms_mean)
         if (step + 1) % 10 == 0:
             msg = (f"[v8/dpo] step {step + 1}/{args.max_iters} loss {total / len(data):.4f} "
                    f"({(time.time() - t0) / 60:.1f} min)")
@@ -168,8 +173,12 @@ def main():
     print(f"[v8/dpo] 完成，已保存 → {save_path}")
 
 
-def _train_logprob(model, inp, mask):
-    """可微版本：直接对策略模型返回平均对数概率（含梯度路径）。"""
+def _train_logprob(model, inp, mask, ctrl=None):
+    """可微版本：直接对策略模型返回平均对数概率（含梯度路径）。
+
+    ctrl 不为 None 时附加 L1 可微稳态正则（drives 层），并返回 logits RMS
+    （detached，供状态层更新稳态基线）。
+    """
     inp = inp.unsqueeze(0)
     logits, _ = model(inp)
     logp = F.log_softmax(logits.float(), dim=-1)
@@ -177,7 +186,12 @@ def _train_logprob(model, inp, mask):
     gathered = logp.gather(-1, target.unsqueeze(-1)).squeeze(-1)     # (1, T)
     maskb = mask.unsqueeze(0)
     denom = maskb.sum(dim=-1).clamp(min=1)
-    return (gathered * maskb).sum(dim=-1) / denom                    # (1,) 标量
+    out = (gathered * maskb).sum(dim=-1) / denom                     # (1,) 标量
+    rms = None
+    if ctrl is not None:
+        stab, rms = ctrl.stability_loss(logits)
+        out = out + stab
+    return out, rms
 
 
 if __name__ == "__main__":
