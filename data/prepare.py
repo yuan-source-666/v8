@@ -77,18 +77,18 @@ def prepare(args):
             texts.append(text)
             print(f"[v8/prepare] 载入 {len(texts)}: {fname} ({len(text)} 字符)")
 
-    # —— 2. 一次性分词 + 拼接 ——
-    raw_tokens: list[int] = []
+    # —— 2. 一次性分词 + 拼接（分片转 numpy，避免超大 list 撑爆内存）——
+    chunks: list[np.ndarray] = []
     sample = texts[0]
     print(f"[v8/prepare] tokenizer={cfg.get('tokenizer')} 语料文件数={len(texts)} "
           f"总字符={sum(len(t) for t in texts)}")
     for i, text in enumerate(texts):
         ids = enc.encode(text)
-        raw_tokens.extend(ids)
+        chunks.append(np.asarray(ids, dtype=np.uint16))
         special = enc.encode_ordinary(text)
         if args.verbose and i < 2:
             print(f"[v8/prepare]   样本{i} 前20 token: {special[:20]}")
-    tokens = np.array(raw_tokens, dtype=np.uint16)
+    tokens = np.concatenate(chunks)
     print(f"[v8/prepare] 总 token 数: {len(tokens)}")
 
     # —— 3. 切分 train / val ——
