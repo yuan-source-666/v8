@@ -1,0 +1,31 @@
+[v8/train] CPU threads=2 mkldnn=True total_cpus=2
+[v8/train] IPEX=不可用（退回原生 oneDNN）
+[v8/train] 混合精度：bf16 (autocast, CPU; mkldnn=True)
+[v8/train] 模型=exp 参数量(M)=7.667 层=4 d=128 布局=mmam
+[v8/train] drives 已启用（L2 稳态驱动）
+[v8/train] 开始训练：max_iters=200 lr=0.001→0.0001 batch=8 grad_accum=2 每更新有效tokens=2048
+[v8/train] step 10/200 loss 9.6664 (EMA 6.6504) ppl 15777.87 lr 1.00e-03 0.1k tok/s | D 0.128 desire 0.206 fear 0.000 drv_loss -0.3967 r +0.396 E 0.75 R 0.75 C 0.60 M 0.53 [稳态]
+[v8/train] step 20/200 loss 7.6035 (EMA 7.7655) ppl 2005.11 lr 9.95e-04 0.1k tok/s | D 0.214 desire 0.265 fear 0.000 drv_loss -0.3668 r +0.365 E 0.70 R 0.75 C 0.40 M 0.44 [稳态]
+[v8/train] step 30/200 loss 5.5775 (EMA 6.7871) ppl 264.42 lr 9.78e-04 0.1k tok/s | D 0.275 desire 0.322 fear 0.000 drv_loss -0.3382 r +0.336 E 0.65 R 0.75 C 0.20 M 0.36 [稳态]
+[v8/train] step 40/200 loss 4.5537 (EMA 5.5178) ppl 94.98 lr 9.49e-04 0.1k tok/s | D 0.346 desire 0.371 fear 0.000 drv_loss -0.3133 r +0.311 E 0.60 R 0.75 C 0.00 M 0.32 [稳态]
+[v8/train] step 50/200 loss 4.0109 (EMA 4.6605) ppl 55.20 lr 9.10e-04 0.1k tok/s | D 0.356 desire 0.393 fear 0.000 drv_loss -0.3020 r +0.300 E 0.55 R 0.75 C 0.00 M 0.28 [稳态]
+[v8/train] step 60/200 loss 3.5738 (EMA 4.0406) ppl 35.65 lr 8.60e-04 0.1k tok/s | D 0.374 desire 0.426 fear 0.000 drv_loss -0.2856 r +0.283 E 0.50 R 0.75 C 0.00 M 0.20 [稳态]
+[v8/train] step 70/200 loss 3.1181 (EMA 3.5595) ppl 22.60 lr 8.02e-04 0.1k tok/s | D 0.415 desire 0.481 fear 0.000 drv_loss -0.2578 r +0.255 E 0.45 R 0.75 C 0.00 M 0.03 [稳态]
+[v8/train] step 80/200 loss 2.8192 (EMA 3.2039) ppl 16.76 lr 7.38e-04 0.1k tok/s | D 0.428 desire 0.500 fear 0.000 drv_loss -0.2482 r +0.246 E 0.40 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 90/200 loss 2.6629 (EMA 2.8552) ppl 14.34 lr 6.68e-04 0.1k tok/s | D 0.436 desire 0.513 fear 0.000 drv_loss -0.2418 r +0.239 E 0.35 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 100/200 loss 2.1817 (EMA 2.5371) ppl 8.86 lr 5.95e-04 0.1k tok/s | D 0.445 desire 0.525 fear 0.000 drv_loss -0.2355 r +0.233 E 0.30 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] 检查点已保存 → out/drives/last.pt
+[v8/train] step 110/200 loss 2.0763 (EMA 2.2739) ppl 7.98 lr 5.20e-04 0.1k tok/s | D 0.455 desire 0.538 fear 0.000 drv_loss -0.2292 r +0.227 E 0.25 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 120/200 loss 1.7919 (EMA 2.0162) ppl 6.00 lr 4.47e-04 0.1k tok/s | D 0.466 desire 0.550 fear 0.000 drv_loss -0.2228 r +0.220 E 0.20 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 130/200 loss 1.6453 (EMA 1.7994) ppl 5.18 lr 3.76e-04 0.1k tok/s | D 0.477 desire 0.563 fear 0.000 drv_loss -0.2165 r +0.214 E 0.15 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 140/200 loss 1.4704 (EMA 1.6296) ppl 4.35 lr 3.10e-04 0.1k tok/s | D 0.489 desire 0.575 fear 0.000 drv_loss -0.2101 r +0.208 E 0.10 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 150/200 loss 1.3497 (EMA 1.4685) ppl 3.86 lr 2.51e-04 0.1k tok/s | D 0.502 desire 0.588 fear 0.000 drv_loss -0.2037 r +0.201 E 0.05 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 160/200 loss 1.1322 (EMA 1.3209) ppl 3.10 lr 2.00e-04 0.1k tok/s | D 0.515 desire 0.600 fear 0.000 drv_loss -0.1974 r +0.195 E 0.00 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 170/200 loss 1.1285 (EMA 1.2187) ppl 3.09 lr 1.58e-04 0.1k tok/s | D 0.515 desire 0.600 fear 0.000 drv_loss -0.1973 r +0.195 E 0.00 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 180/200 loss 1.0903 (EMA 1.1289) ppl 2.98 lr 1.27e-04 0.1k tok/s | D 0.515 desire 0.600 fear 0.000 drv_loss -0.1974 r +0.195 E 0.00 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 190/200 loss 1.0311 (EMA 1.0623) ppl 2.80 lr 1.07e-04 0.1k tok/s | D 0.514 desire 0.599 fear 0.000 drv_loss -0.1980 r +0.195 E 0.00 R 0.75 C 0.00 M 0.00 [稳态]
+[v8/train] step 200/200 loss 0.9942 (EMA 1.0155) ppl 2.70 lr 1.00e-04 0.1k tok/s | D 0.511 desire 0.596 fear 0.000 drv_loss -0.1994 r +0.197 E 0.00 R 0.75 C 0.02 M 0.00 [稳态]
+[v8/train] ===== val_loss 2.7072 ppl 14.99 =====
+[v8/train] 新最佳模型已保存 → out/drives/best.pt
+[v8/train] 检查点已保存 → out/drives/last.pt
+[v8/train] 训练完成，耗时 6.0 分钟。最终 checkpoint → out/drives/last.pt、out/drives/best.pt

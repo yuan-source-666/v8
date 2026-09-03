@@ -1,0 +1,54 @@
+common: &common
+  seed: 42
+  tokenizer: "gpt2"
+  dtype: "bf16"
+  num_threads: 2
+  max_seq_len: 128
+  grad_accum: 2
+  grad_clip: 1.0
+  warmup_frac: 0.05
+  min_lr_frac: 0.1
+  log_interval: 10
+  eval_interval: 200
+  eval_iters: 10
+  save_interval: 100
+  out_dir: "out"
+  drives:
+    components:
+      resources:     {setpoint: 0.75, low: 0.0, high: 1.0}
+      energy:        {setpoint: 0.80, low: 0.0, high: 1.0}
+      consistency:   {setpoint: 0.70, low: 0.0, high: 1.0}
+      safety_margin: {setpoint: 0.60, low: 0.0, high: 1.0}
+      desire:        {setpoint: 0.50, low: 0.0, high: 1.0}
+      fear:          {setpoint: 0.30, low: 0.0, high: 1.0}
+    target_state:
+      resources: 0.90
+      energy: 0.60
+      consistency: 0.85
+      safety_margin: 0.80
+    safety_bound: {fear_threshold: 0.80, anticipation_steps: 3}
+    w_reg: 0.01
+    w_desire: 0.5
+    w_fear: 1.0
+exp:
+  <<: *common
+  name: exp
+  vocab_size: 4096
+  d_model: 128
+  n_layer: 4
+  n_head: 4
+  n_kv_head: 2
+  head_dim: 32
+  ffn_mult: 4
+  layout: "MMA"
+  mamba:
+    expand: 2
+    d_state: 8
+    d_conv: 4
+    headdim: 32
+    dt: true
+  batch_size: 8
+  max_iters: 400
+  lr: 0.001
+  train_data: "data/tokens/exp_train.npy"
+  val_data: "data/tokens/exp_val.npy"

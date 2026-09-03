@@ -1,0 +1,49 @@
+[v8/train] CPU threads=2 mkldnn=True total_cpus=2
+[v8/train] IPEX=不可用（退回原生 oneDNN）
+[v8/train] 混合精度：bf16 (autocast, CPU; mkldnn=True)
+[v8/train] 模型=exp 参数量(M)=7.667 层=4 d=128 布局=mmam
+[v8/train] 开始训练：max_iters=400 lr=0.001→0.0001 batch=8 grad_accum=2 每更新有效tokens=2048
+[v8/train] step 10/400 loss 10.0982 (EMA 6.8074) ppl 24299.40 lr 5.00e-04 0.1k tok/s
+[v8/train] step 20/400 loss 8.6073 (EMA 8.3831) ppl 5471.35 lr 1.00e-03 0.1k tok/s
+[v8/train] step 30/400 loss 6.4146 (EMA 7.6162) ppl 610.72 lr 9.99e-04 0.1k tok/s
+[v8/train] step 40/400 loss 4.8768 (EMA 6.1326) ppl 131.21 lr 9.94e-04 0.1k tok/s
+[v8/train] step 50/400 loss 4.1759 (EMA 5.0097) ppl 65.10 lr 9.87e-04 0.1k tok/s
+[v8/train] step 60/400 loss 3.7119 (EMA 4.2612) ppl 40.93 lr 9.77e-04 0.1k tok/s
+[v8/train] step 70/400 loss 3.2083 (EMA 3.7083) ppl 24.74 lr 9.64e-04 0.1k tok/s
+[v8/train] step 80/400 loss 2.8759 (EMA 3.3008) ppl 17.74 lr 9.48e-04 0.1k tok/s
+[v8/train] step 90/400 loss 2.6439 (EMA 2.8954) ppl 14.07 lr 9.29e-04 0.1k tok/s
+[v8/train] step 100/400 loss 2.1430 (EMA 2.5328) ppl 8.53 lr 9.07e-04 0.1k tok/s
+[v8/train] step 110/400 loss 1.9614 (EMA 2.2118) ppl 7.11 lr 8.84e-04 0.1k tok/s
+[v8/train] step 120/400 loss 1.5901 (EMA 1.8784) ppl 4.90 lr 8.58e-04 0.1k tok/s
+[v8/train] step 130/400 loss 1.3613 (EMA 1.5885) ppl 3.90 lr 8.29e-04 0.1k tok/s
+[v8/train] step 140/400 loss 1.1256 (EMA 1.3476) ppl 3.08 lr 7.99e-04 0.1k tok/s
+[v8/train] step 150/400 loss 0.9361 (EMA 1.1144) ppl 2.55 lr 7.67e-04 0.1k tok/s
+[v8/train] step 160/400 loss 0.7270 (EMA 0.9249) ppl 2.07 lr 7.34e-04 0.1k tok/s
+[v8/train] step 170/400 loss 0.6270 (EMA 0.7584) ppl 1.87 lr 7.00e-04 0.1k tok/s
+[v8/train] step 180/400 loss 0.5247 (EMA 0.6249) ppl 1.69 lr 6.64e-04 0.1k tok/s
+[v8/train] step 190/400 loss 0.4381 (EMA 0.5134) ppl 1.55 lr 6.28e-04 0.1k tok/s
+[v8/train] step 200/400 loss 0.3590 (EMA 0.4243) ppl 1.43 lr 5.91e-04 0.1k tok/s
+[v8/train] ===== val_loss 2.6080 ppl 13.57 =====
+[v8/train] 新最佳模型已保存 → out/base/best.pt
+[v8/train] step 210/400 loss 0.2661 (EMA 0.3439) ppl 1.30 lr 5.54e-04 0.1k tok/s
+[v8/train] step 220/400 loss 0.2503 (EMA 0.2884) ppl 1.28 lr 5.17e-04 0.1k tok/s
+[v8/train] step 230/400 loss 0.1997 (EMA 0.2431) ppl 1.22 lr 4.80e-04 0.1k tok/s
+[v8/train] step 240/400 loss 0.1919 (EMA 0.2100) ppl 1.21 lr 4.43e-04 0.1k tok/s
+[v8/train] step 250/400 loss 0.1704 (EMA 0.1787) ppl 1.19 lr 4.07e-04 0.1k tok/s
+[v8/train] step 260/400 loss 0.1364 (EMA 0.1560) ppl 1.15 lr 3.73e-04 0.1k tok/s
+[v8/train] step 270/400 loss 0.1194 (EMA 0.1429) ppl 1.13 lr 3.39e-04 0.1k tok/s
+[v8/train] step 280/400 loss 0.1103 (EMA 0.1247) ppl 1.12 lr 3.07e-04 0.1k tok/s
+[v8/train] step 290/400 loss 0.1199 (EMA 0.1149) ppl 1.13 lr 2.77e-04 0.1k tok/s
+[v8/train] step 300/400 loss 0.0879 (EMA 0.1032) ppl 1.09 lr 2.48e-04 0.1k tok/s
+[v8/train] step 310/400 loss 0.0963 (EMA 0.1009) ppl 1.10 lr 2.21e-04 0.1k tok/s
+[v8/train] step 320/400 loss 0.0890 (EMA 0.0924) ppl 1.09 lr 1.97e-04 0.1k tok/s
+[v8/train] step 330/400 loss 0.0759 (EMA 0.0902) ppl 1.08 lr 1.75e-04 0.1k tok/s
+[v8/train] step 340/400 loss 0.0762 (EMA 0.0853) ppl 1.08 lr 1.56e-04 0.1k tok/s
+[v8/train] step 350/400 loss 0.0716 (EMA 0.0772) ppl 1.07 lr 1.39e-04 0.1k tok/s
+[v8/train] step 360/400 loss 0.0804 (EMA 0.0750) ppl 1.08 lr 1.26e-04 0.1k tok/s
+[v8/train] step 370/400 loss 0.0704 (EMA 0.0719) ppl 1.07 lr 1.15e-04 0.1k tok/s
+[v8/train] step 380/400 loss 0.0634 (EMA 0.0693) ppl 1.07 lr 1.07e-04 0.1k tok/s
+[v8/train] step 390/400 loss 0.0565 (EMA 0.0662) ppl 1.06 lr 1.02e-04 0.1k tok/s
+[v8/train] step 400/400 loss 0.0600 (EMA 0.0622) ppl 1.06 lr 1.00e-04 0.1k tok/s
+[v8/train] ===== val_loss 2.6158 ppl 13.68 =====
+[v8/train] 训练完成，耗时 12.8 分钟。最终 checkpoint → out/base/last.pt、out/base/best.pt

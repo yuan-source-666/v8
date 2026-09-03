@@ -1,0 +1,35 @@
+[v8/train] CPU threads=2 mkldnn=True total_cpus=2
+[v8/train] IPEX=不可用（退回原生 oneDNN）
+[v8/train] 混合精度：bf16 (autocast, CPU; mkldnn=True)
+[v8/train] 模型=exp 参数量(M)=7.667 层=4 d=128 布局=mmam
+[v8/train] drives 已启用（L2 稳态驱动）
+[v8/train] 已续训自 out/drives/last.pt（step=199）
+[v8/train] 开始训练：max_iters=400 lr=0.001→0.0001 batch=8 grad_accum=2 每更新有效tokens=2048
+[v8/train] step 200/400 loss 0.9611 (EMA 0.0961) ppl 2.61 lr 5.91e-04 1.0k tok/s | D 0.013 desire 0.177 fear 0.000 drv_loss -0.4117 r +0.412 E 0.80 R 0.75 C 0.70 M 0.59 [稳态]
+[v8/train] ===== val_loss 2.7212 ppl 15.20 =====
+[v8/train] 检查点已保存 → out/drives/last.pt
+[v8/train] step 210/400 loss 0.8301 (EMA 0.6139) ppl 2.29 lr 5.54e-04 0.1k tok/s | D 0.156 desire 0.211 fear 0.000 drv_loss -0.3943 r +0.393 E 0.74 R 0.75 C 0.71 M 0.39 [稳态]
+[v8/train] step 220/400 loss 0.6819 (EMA 0.6948) ppl 1.98 lr 5.17e-04 0.1k tok/s | D 0.237 desire 0.251 fear 0.000 drv_loss -0.3741 r +0.372 E 0.69 R 0.75 C 0.71 M 0.19 [稳态]
+[v8/train] step 230/400 loss 0.6453 (EMA 0.6698) ppl 1.91 lr 4.80e-04 0.1k tok/s | D 0.295 desire 0.287 fear 0.000 drv_loss -0.3556 r +0.354 E 0.64 R 0.75 C 0.70 M 0.00 [稳态]
+[v8/train] step 240/400 loss 0.5189 (EMA 0.5869) ppl 1.68 lr 4.43e-04 0.1k tok/s | D 0.301 desire 0.277 fear 0.000 drv_loss -0.3606 r +0.359 E 0.59 R 0.75 C 0.70 M 0.00 [稳态]
+[v8/train] step 250/400 loss 0.4124 (EMA 0.5132) ppl 1.51 lr 4.07e-04 0.1k tok/s | D 0.306 desire 0.288 fear 0.000 drv_loss -0.3549 r +0.353 E 0.54 R 0.75 C 0.70 M 0.00 [稳态]
+[v8/train] step 260/400 loss 0.4205 (EMA 0.4376) ppl 1.52 lr 3.73e-04 0.1k tok/s | D 0.312 desire 0.300 fear 0.000 drv_loss -0.3492 r +0.347 E 0.49 R 0.75 C 0.71 M 0.00 [稳态]
+[v8/train] step 270/400 loss 0.3419 (EMA 0.3826) ppl 1.41 lr 3.39e-04 0.1k tok/s | D 0.320 desire 0.309 fear 0.000 drv_loss -0.3443 r +0.342 E 0.44 R 0.75 C 0.72 M 0.00 [稳态]
+[v8/train] step 280/400 loss 0.2891 (EMA 0.3346) ppl 1.34 lr 3.07e-04 0.1k tok/s | D 0.329 desire 0.318 fear 0.000 drv_loss -0.3398 r +0.338 E 0.39 R 0.75 C 0.73 M 0.00 [稳态]
+[v8/train] step 290/400 loss 0.2261 (EMA 0.2895) ppl 1.25 lr 2.77e-04 0.1k tok/s | D 0.339 desire 0.327 fear 0.000 drv_loss -0.3353 r +0.333 E 0.34 R 0.75 C 0.75 M 0.00 [稳态]
+[v8/train] step 300/400 loss 0.2278 (EMA 0.2556) ppl 1.26 lr 2.48e-04 0.1k tok/s | D 0.350 desire 0.336 fear 0.000 drv_loss -0.3310 r +0.329 E 0.29 R 0.75 C 0.76 M 0.00 [稳态]
+[v8/train] 检查点已保存 → out/drives/last.pt
+[v8/train] step 310/400 loss 0.2285 (EMA 0.2376) ppl 1.26 lr 2.21e-04 0.1k tok/s | D 0.363 desire 0.344 fear 0.000 drv_loss -0.3269 r +0.325 E 0.24 R 0.75 C 0.78 M 0.00 [稳态]
+[v8/train] step 320/400 loss 0.2085 (EMA 0.2178) ppl 1.23 lr 1.97e-04 0.1k tok/s | D 0.376 desire 0.352 fear 0.000 drv_loss -0.3228 r +0.320 E 0.19 R 0.75 C 0.80 M 0.00 [稳态]
+[v8/train] step 330/400 loss 0.1656 (EMA 0.1939) ppl 1.18 lr 1.75e-04 0.1k tok/s | D 0.390 desire 0.360 fear 0.000 drv_loss -0.3187 r +0.316 E 0.14 R 0.75 C 0.82 M 0.00 [稳态]
+[v8/train] step 340/400 loss 0.1724 (EMA 0.1837) ppl 1.19 lr 1.56e-04 0.1k tok/s | D 0.405 desire 0.367 fear 0.000 drv_loss -0.3148 r +0.312 E 0.09 R 0.75 C 0.84 M 0.00 [稳态]
+[v8/train] step 350/400 loss 0.1398 (EMA 0.1720) ppl 1.15 lr 1.39e-04 0.1k tok/s | D 0.420 desire 0.378 fear 0.000 drv_loss -0.3094 r +0.307 E 0.04 R 0.75 C 0.86 M 0.00 [稳态]
+[v8/train] step 360/400 loss 0.1424 (EMA 0.1603) ppl 1.15 lr 1.26e-04 0.1k tok/s | D 0.434 desire 0.394 fear 0.000 drv_loss -0.3013 r +0.299 E 0.00 R 0.75 C 0.87 M 0.00 [稳态]
+[v8/train] step 370/400 loss 0.1477 (EMA 0.1510) ppl 1.16 lr 1.15e-04 0.1k tok/s | D 0.435 desire 0.398 fear 0.000 drv_loss -0.2989 r +0.296 E 0.00 R 0.75 C 0.89 M 0.00 [稳态]
+[v8/train] step 380/400 loss 0.1186 (EMA 0.1415) ppl 1.13 lr 1.07e-04 0.1k tok/s | D 0.437 desire 0.403 fear 0.000 drv_loss -0.2965 r +0.294 E 0.00 R 0.75 C 0.91 M 0.00 [稳态]
+[v8/train] step 390/400 loss 0.1375 (EMA 0.1370) ppl 1.15 lr 1.02e-04 0.1k tok/s | D 0.438 desire 0.408 fear 0.000 drv_loss -0.2941 r +0.292 E 0.00 R 0.75 C 0.93 M 0.00 [稳态]
+[v8/train] step 400/400 loss 0.1318 (EMA 0.1315) ppl 1.14 lr 1.00e-04 0.1k tok/s | D 0.440 desire 0.413 fear 0.000 drv_loss -0.2916 r +0.289 E 0.00 R 0.75 C 0.95 M 0.00 [稳态]
+[v8/train] ===== val_loss 2.4630 ppl 11.74 =====
+[v8/train] 新最佳模型已保存 → out/drives/best.pt
+[v8/train] 检查点已保存 → out/drives/last.pt
+[v8/train] 训练完成，耗时 6.2 分钟。最终 checkpoint → out/drives/last.pt、out/drives/best.pt

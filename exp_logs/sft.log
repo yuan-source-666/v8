@@ -1,0 +1,13 @@
+[v8/sft] 已加载初始权重: out/base/best.pt
+[v8/sft] 示例指令数=12
+[v8/sft] step 20/200 loss 0.9538 (0.3 min)
+[v8/sft] step 40/200 loss 0.7083 (0.7 min)
+[v8/sft] step 60/200 loss 0.6029 (1.0 min)
+[v8/sft] step 80/200 loss 0.5332 (1.4 min)
+[v8/sft] step 100/200 loss 0.4808 (1.7 min)
+[v8/sft] step 120/200 loss 0.4364 (2.2 min)
+[v8/sft] step 140/200 loss 0.3958 (2.5 min)
+[v8/sft] step 160/200 loss 0.3573 (2.9 min)
+[v8/sft] step 180/200 loss 0.3202 (3.2 min)
+[v8/sft] step 200/200 loss 0.2842 (3.6 min)
+[v8/sft] 完成，已保存 → out/base/sft.pt

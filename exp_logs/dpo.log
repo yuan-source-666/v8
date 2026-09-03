@@ -1,0 +1,18 @@
+[v8/dpo] 已加载初始权重: out/base/sft.pt
+[v8/dpo] 偏好对数量=8
+[v8/dpo] step 10/150 loss 0.5492 (0.2 min)
+[v8/dpo] step 20/150 loss 0.4713 (0.3 min)
+[v8/dpo] step 30/150 loss 0.3798 (0.4 min)
+[v8/dpo] step 40/150 loss 0.3319 (0.6 min)
+[v8/dpo] step 50/150 loss 0.3013 (0.7 min)
+[v8/dpo] step 60/150 loss 0.2566 (0.9 min)
+[v8/dpo] step 70/150 loss 0.2121 (1.0 min)
+[v8/dpo] step 80/150 loss 0.1658 (1.2 min)
+[v8/dpo] step 90/150 loss 0.1369 (1.3 min)
+[v8/dpo] step 100/150 loss 0.1086 (1.5 min)
+[v8/dpo] step 110/150 loss 0.0816 (1.6 min)
+[v8/dpo] step 120/150 loss 0.0613 (1.8 min)
+[v8/dpo] step 130/150 loss 0.0529 (1.9 min)
+[v8/dpo] step 140/150 loss 0.0482 (2.1 min)
+[v8/dpo] step 150/150 loss 0.0467 (2.2 min)
+[v8/dpo] 完成，已保存 → out/base/dpo.pt
